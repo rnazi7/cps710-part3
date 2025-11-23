@@ -487,3 +487,136 @@ void string() :
   }
 }
 
+/* ---------------------------------------------------------------------
+   Stub productions to force JJTree to generate the missing AST classes
+   referenced by the action code above.  These are minimal, safe, non-
+   disruptive productions that just bind tokens or are empty. They exist
+   only so JJTree will output AST*.java files like ASTLESS.java, ASTSUM.java, etc.
+   --------------------------------------------------------------------- */
+
+/* Comparator token nodes */
+void make_LESS() #ASTLESS :
+{Token t;}
+{
+  t=<LESS> { jjtThis.value = t.image; }
+}
+
+void make_LE() #ASTLE :
+{Token t;}
+{
+  t=<LE> { jjtThis.value = t.image; }
+}
+
+void make_GREAT() #ASTGREAT :
+{Token t;}
+{
+  t=<GREAT> { jjtThis.value = t.image; }
+}
+
+void make_GE() #ASTGE :
+{Token t;}
+{
+  t=<GE> { jjtThis.value = t.image; }
+}
+
+void make_EQ() #ASTEQ :
+{Token t;}
+{
+  t=<EQ> { jjtThis.value = t.image; }
+}
+
+void make_NEQ() #ASTNEQ :
+{Token t;}
+{
+  t=<NEQ> { jjtThis.value = t.image; }
+}
+
+void make_IN() #ASTIN :
+{Token t;}
+{
+  t=<IN> { jjtThis.value = t.image; }
+}
+
+void make_NOTIN() #ASTNOTIN :
+{Token t;}
+{
+  t=<NOTIN> { jjtThis.value = t.image; }
+}
+
+/* Boolean constants as node classes (ensure ASTTRUE/ASTFALSE exist) */
+void make_TRUE() #ASTTRUE :
+{Token t;}
+{
+  t=<TRUE> { jjtThis.value = t.image; }
+}
+void make_FALSE() #ASTFALSE :
+{Token t;}
+{
+  t=<FALSE> { jjtThis.value = t.image; }
+}
+
+/* AST nodes for arithmetic and unary wrappers */
+void make_SUM() #ASTSUM : {} { }
+void make_NEG() #ASTNEG : {} { }
+void make_POS() #ASTPOS : {} { }
+
+/* AST nodes for multiplication/div/mod */
+void make_MUL() #ASTMUL :
+{Token t;}
+{
+  t=<TIMES> { jjtThis.value = t.image; }
+}
+void make_DIV() #ASTDIV :
+{Token t;}
+{
+  t=<DIV> { jjtThis.value = t.image; }
+}
+void make_MOD() #ASTMOD :
+{Token t;}
+{
+  t=<MOD> { jjtThis.value = t.image; }
+}
+
+/* AST node for null placeholder */
+void make_NULL() #ASTNULL : {} { }
+
+/* Generic comparator wrapper if needed (ensure ASTCOMPARISON exists) */
+void make_COMPARISON() #ASTCOMPARISON : {} { }
+
+/* Some structural AST nodes that might be referenced */
+void make_if_stat_node() #ASTIf : {} { }
+void make_or_node() #ASTor : {} { }
+void make_and_node() #ASTand : {} { }
+void make_not_node() #ASTnot : {} { }
+
+/* Token-value node classes for ids/numbers/strings (should already be generated,
+   but we ensure they exist explicitly if needed) */
+void make_idnum() #ASTidnum :
+{Token t;}
+{
+  t=<IDNUM> { jjtThis.value = t.image; }
+}
+void make_idbool() #ASTidbool :
+{Token t;}
+{
+  t=<IDBOOL> { jjtThis.value = t.image; }
+}
+void make_idvec() #ASTidvec :
+{Token t;}
+{
+  t=<IDVEC> { jjtThis.value = t.image; }
+}
+void make_number() #ASTnumber :
+{Token t;}
+{
+  t=<NUMBER> { jjtThis.value = t.image; }
+}
+void make_string() #ASTstring :
+{Token t;}
+{
+  t=<STRING> { jjtThis.value = t.image; }
+}
+
+/* End of stub block */
+
+
