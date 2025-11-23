@@ -218,9 +218,9 @@ void if_stat() :
 void else_part() #void : 
 {} 
 {
-  LOOKAHEAD(2) <ELIF> condition() <THEN> clause() else_part() #if(3)
+  LOOKAHEAD(2) <ELIF> condition() <THEN> clause() else_part()
   | <ELSE> clause()
-  | {} #null
+  | {}
 }
 
 void for_stat() : {} {
@@ -486,3 +486,4 @@ void string() :
     jjtThis.value = t.image;
   }
 }
+
