@@ -218,7 +218,7 @@ void if_stat() :
 void else_part() #void : 
 {} 
 {
-  LOOKAHEAD(2) ( <ELIF> condition() <THEN> clause() else_part() ) #if(3)
+  LOOKAHEAD(2) ( <ELIF> condition() <THEN> clause() else_part() ) #If(3)
   | <ELSE> clause()
   | {} #null
 }
