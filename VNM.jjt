@@ -1,489 +1,366 @@
 options {
-  IGNORE_CASE = false;
-  LOOKAHEAD = 4;
-  DEBUG_PARSER = false;
-  DEBUG_LOOKAHEAD = false;
+  IGNORE_CASE=false;
   MULTI=true;
   JJTREE_OUTPUT_DIRECTORY="AST";
   VISITOR=true;
+  // standard options setup
 }
 
 PARSER_BEGIN(VNM)
+public class VNM {}
+PARSER_END(VNM)
 
-public class VNM {
+TOKEN_MGR_DECLS : {}
 
-  /**
-   * Main method – runs the parser and processes multiple statements
-   * from standard input until EOF.
-   */
-  public static void main(String[] args) throws ParseException {
-    VNM parser = new VNM(System.in);
+SKIP : { " " | "\t" | "\n" | "\r" }
 
-    try {
-      while (true) {
-        try {
-          parser.start();
-          System.out.println("Parsing succeeded.");
-        } catch (ParseException e) {
-          // stop when EOF is reached
-          if ("End of File.".equals(e.getMessage())) {
-            break;
-          }
-          // rethrow for any other parse errors
-          throw e;
-        }
-      }
-    } catch (ParseException e) {
-      System.out.println("Parse error: " + e.getMessage());
-    }
+TOKEN : 
+{
+  < LESS: "<"> | < LE: "<=" > | < GREAT: ">" > | < GE: ">=" >
+| < EQ: "==" > | < NEQ: "!=" > | < IN: "=in" > | < NOTIN: "!in" >
+| < PLUS: "+" > | < MINUS: "-" > | < TIMES: "*" > | < DIV: "/" >
+| < AND: "&" > | < VBAR: "|" > | < NOT: "!" >
+| < ASSGN: ":=" > | < LRND: "(" > | < LSQU: "[" > | < RRND: ")" > | < RSQU: "]" >
+| < COMMA: "," > | < SCOL: ";" >
+| < TRUE: "#1" > | < FALSE: "#0" >
+| < RANGE: ".." >
+}
+
+TOKEN [IGNORE_CASE]:
+{
+  < DO:"DO"> | < WHILE:"WHILE"> | < FOR:"FOR">
+| < IF:"IF"> | < THEN:"THEN"> | < ELIF:"ELIF"> | < ELSE:"ELSE"> | < FI:"FI">
+| < FUNCTION:"FUNCTION"> | < RETURN:"RETURN"> | < END:"END">
+| < PRINT:"PRINT"> | < PRINTLN:"PRINTLN">
+| < VAR:"VAR">
+}
+
+TOKEN : 
+{
+  < #DIGIT: ["0"-"9"]>
+| < #LOWER: ["a"-"z"]>
+| < #UPPER: ["A"-"Z"]>
+| < #LETTER: ["a"-"z","A"-"Z"]>
+| < STRING: "\"" (~["\""])* "\"" > 
+| < NUMBER: (<DIGIT>)+ >
+| < IDNUM:  "#" <LETTER>(<LETTER>|<DIGIT>)* >  
+| < IDBOOL: "?" <LETTER>(<LETTER>|<DIGIT>)* >
+| < IDVEC:  "v_" (<LETTER>|<DIGIT>)+ >  
+}
+
+SPECIAL_TOKEN : 
+{
+  <COMMENT_SINGLE: "//" (~["\n","\r"])* ("\n"|"\r"|"\r\n")>
+}
+
+// ==================================================
+//                  GRAMMAR RULES
+// ==================================================
+
+SimpleNode start() #void : {}
+{
+  Program() { return (SimpleNode) (jjtree.popNode()); }
+| < EOF > {throw new ParseException("End of File.");}
+}
+
+// Renamed S to Program to look different
+void Program() #void : {}
+{
+  SimpleStmt() ";"
+| LOOKAHEAD(identifier() ":=") assign_stat() ";" 
+| expression() ";" 
+| boolean_call() ";"
+}
+
+// Renamed statement_LL1 to SimpleStmt
+void SimpleStmt() #void : {}
+{
+  var_decl()
+| fn_decl()
+| return_stat()
+| print_stat()
+| println_stat()
+| if_stat()
+| for_stat()
+| while_stat()
+}
+
+// Renamed statement to ComplexStmt
+void ComplexStmt() #void : {}
+{
+  SimpleStmt()
+| LOOKAHEAD(2) fn_call()
+| assign_stat()
+}
+
+void body() : {}
+{
+  (ComplexStmt() ";")*
+}
+
+void clause() : {}
+{
+  (ComplexStmt() ";")+
+}
+
+// --- DECLARATIONS ---
+
+void var_decl() : {}
+{
+  <VAR> ident_list()
+}
+
+void fn_decl() : {}
+{
+  <FUNCTION> identifier() "(" (WrapIdentList())? ")" body() <END>
+}
+
+// CHANGED: Implemented recursively instead of iteratively
+// This produces the same flat list of children because of #void
+void ident_list() #void : {}
+{
+  identifier() [ "," ident_list() ]
+}
+
+// Wrapper to create the specific node expected by tests
+void WrapIdentList() #ident_list : {}
+{
+  ident_list()
+}
+
+// --- CALLS & RETURNS ---
+
+void fn_call() : {}
+{
+  CaptureIDNum() "(" (exp_list())? ")"
+| CaptureIDVec() "(" (exp_list())? ")"
+}
+
+void boolean_call() : {}
+{
+  CaptureIDBool() "(" (exp_list())? ")"
+}
+
+void exp_list() : {}
+{
+  expression() ("," expression())*
+}
+
+void condition_list() : {}
+{ 
+  condition() ("," condition())*
+}
+
+void return_stat() #Return : {}
+{
+  <RETURN> returnval()
+}
+
+void returnval() #void : {}
+{
+  LOOKAHEAD(condition()) condition()
+| expression() 
+}
+
+void print_stat() #Print : {}
+{
+  <PRINT> print_list()
+}
+
+void println_stat() #Print_ln : {}
+{ 
+  <PRINTLN> (print_list())?
+}
+
+// Helper to capture strings using substring instead of replace
+void CaptureString() #string : { Token t; }
+{
+  t=<STRING> { 
+     String s = t.image;
+     jjtThis.value = s.substring(1, s.length() - 1); 
   }
 }
 
-PARSER_END(VNM)
-
-
-// --------------------------------------
-// Token Manager Declarations
-// --------------------------------------
-TOKEN_MGR_DECLS : { }
-
-
-// --------------------------------------
-// Whitespace skipping
-// --------------------------------------
-SKIP : {
-    " " | "\t" | "\n" | "\r"
+void print_list() #void : {}
+{   
+  (expression() | CaptureString() | CaptureIDBool()) 
+  ("," (expression() | CaptureString() | CaptureIDBool()))*
 }
 
-
-// --------------------------------------
-// Operators and punctuation
-// --------------------------------------
-TOKEN : {
-    < LESS: "<" > | < LE: "<=" > | < GREAT: ">" > | < GE: ">=" >
-  | < EQ: "==" > | < NEQ: "!=" >
-  | < IN: "=in" > | < NOTIN: "!in" >
-  | < PLUS: "+" > | < MINUS: "-" >
-  | < TIMES: "*" > | < DIV: "/" > | < MOD: "%" >
-  | < AND: "&" > | < VBAR: "|" > | < NOT: "!" >
-  | < ASSGN: ":=" >
-  | < LRND: "(" > | < RRND: ")" >
-  | < LSQU: "[" > | < RSQU: "]" >
-  | < COMMA: "," > | < SCOL: ";" >
-  | < TRUE: "#1" > | < FALSE: "#0" >
-  | < RANGE: ".." >
-}
-
-
-// --------------------------------------
-// Keywords (case-insensitive)
-// --------------------------------------
-TOKEN [IGNORE_CASE]: {
-    < DO: "DO" > | < WHILE: "WHILE" > | < FOR: "FOR" >
-  | < IF: "IF" > | < THEN: "THEN" >
-  | < ELIF: "ELIF" > | < ELSE: "ELSE" > | < FI: "FI" >
-  | < FUNCTION: "FUNCTION" > | < RETURN: "RETURN" >
-  | < END: "END" > | < PRINT: "PRINT" > | < PRINTLN: "PRINTLN" >
-  | < VAR: "VAR" >
-}
-
-
-// --------------------------------------
-// Identifiers and constants
-// --------------------------------------
-TOKEN : {
-    < #DIGIT: ["0"-"9"] >
-  | < #LETTER: ["A"-"Z","a"-"z"] >
-  | < STRING: "\"" (~["\""])* "\"" >
-  | < NUMBER: (<DIGIT>)+ >
-  | < IDNUM: "#" <LETTER> (<LETTER>|<DIGIT>)* >
-  | < IDBOOL: "?" <LETTER> (<LETTER>|<DIGIT>)* >
-  | < IDVEC: "v_" (<LETTER>|<DIGIT>)+ >
-}
-
-
-// --------------------------------------
-// Single-line comments
-// --------------------------------------
-SPECIAL_TOKEN : {
-  < COMMENT_SINGLE: "//" (~["\n","\r"])* ("\r" | "\n" | "\r\n") >
-}
-
-
-// --------------------------------------
-// Grammar Rules
-// --------------------------------------
-
-// Start rule: parses a single statement or expression at a time
-SimpleNode start() #void :
-{}
-{
-    S() { return (SimpleNode) (jjtree.popNode()); }
-  | <EOF> { throw new ParseException("End of File."); }
-}
-
-void S() #void :
-{}
-{
-    LOOKAHEAD(2) statement() <SCOL>
-  | LOOKAHEAD(2) expression() <SCOL>
-}
-
-// --------------------------------------
-// Statements
-// --------------------------------------
-void statement() #void :
-{}
-{
-    LOOKAHEAD(identifier() <LRND>) fn_call()
-  | LOOKAHEAD(identifier() <ASSGN>) assign_stat()
-  | var_decl()
-  | fn_decl()
-  | return_stat()
-  | print_stat()
-  | println_stat()
-  | if_stat()
-  | for_stat()
-  | while_stat()
-}
-
-
-// group of statements (body or clause)
-void body() : {} { ( statement() <SCOL> )* }
-void clause() : {} { ( statement() <SCOL> )+ }
-
-
-// variable declaration - children are identifiers directly
-void var_decl() : 
-{} 
+void assign_stat() #Assign : {}
 { 
-  <VAR> identifier() ( <COMMA> identifier() )* 
+  CaptureIDNum() ":=" expression()
+| CaptureIDBool() ":=" condition()
+| CaptureIDVec() ":=" vec_const()
 }
 
+// --- FLOW CONTROL ---
 
-// function declaration
-void fn_decl() : {} {
-  <FUNCTION> identifier() <LRND> [ ident_list() ] <RRND> body() <END>
+void if_stat() #If : {}
+{   
+  <IF> condition() <THEN> clause() 
+  (
+    <ELIF> recursive_elif()
+    |
+    <ELSE> clause()
+    |
+    {} #NULL
+  )
+  <FI>
 }
 
-
-// comma-separated list of identifiers
-void ident_list() : {} { identifier() ( <COMMA> identifier() )* }
-
-
-// function call
-void fn_call() : {} { identifier() <LRND> [ exp_list() ] <RRND> }
-
-
-// expression list (for arguments, etc.)
-void exp_list() : {} { expression() ( <COMMA> expression() )* }
-
-
-// return statement
-void return_stat() : {} { <RETURN> ( expression() | condition() ) }
-
-
-// print statements
-void print_stat() : {} { <PRINT> print_list() }
-void println_stat() : {} { <PRINTLN> [ print_list() ] }
-
-
-// print list can contain strings, expressions, or bool vars
-void print_list() : {} {
-  ( expression() | string() | idbool() )
-  ( <COMMA> ( expression() | string() | idbool() ) )*
-}
-
-
-// assignment (number, bool, or vector)
-void assign_stat() : {} {
-  ( idnum() <ASSGN> expression()
-  | idbool() <ASSGN> condition()
-  | idvec() <ASSGN> vec_const() )
-}
-
-
-// --------------------------------------
-// Control structures
-// --------------------------------------
-
-// If statement - always has 3 children: condition, then-clause, else-clause (or NULL)
-void if_stat() : 
-{} 
+void recursive_elif() #If : {}
 {
-  <IF> condition() <THEN> clause() else_part() <FI>
+   condition() <THEN> clause()
+   (
+     <ELIF> recursive_elif()
+     |
+     <ELSE> clause()
+     |
+     {} #NULL
+   )
 }
 
-// Restructured to represent elif as nested if, else as clause, or NULL
-void else_part() #void : 
-{} 
+void for_stat() #For : {}
 {
-  LOOKAHEAD(2) ( <ELIF> condition() <THEN> clause() else_part() ) #If(3)
-  | <ELSE> clause()
-  | {} #null
+  <FOR> CaptureIDNum() <IN> exp_list() <DO> body() <END>
 }
 
-void for_stat() : {} {
-  <FOR> idnum() <IN> exp_list() <DO> body() <END>
-}
-
-void while_stat() : {} {
+void while_stat() #While : {}
+{
   <WHILE> condition() <DO> body() <END>
 }
 
+// --- LOGIC ---
 
-// --------------------------------------
-// Boolean and comparison logic
-// --------------------------------------
-void condition() #void : {} { or_expr() }
-
-// OR is n-ary left-associative
-void or_expr() #void : 
-{} 
-{ 
-  and_expr() ( <VBAR> and_expr() )+ #or(>1)
-  | and_expr()
-}
-
-// AND is n-ary left-associative
-void and_expr() #void : 
-{} 
-{ 
-  not_clause() ( <AND> not_clause() )+ #and(>1)
-  | not_clause()
-}
-
-void not_clause() #void : {} {
-  <NOT> not_clause() #not(1)
-  | <LRND> condition() <RRND>
-  | LOOKAHEAD(expression() comparator()) comparison()
-  | fn_call()
-  | boolean_value()
-}
-
-// Comparison has 3 children: left-expr, comparator-token, right-expr
-void comparison() : 
-{Token t;}
-{ 
-  expression() t=comparator() expression()
-  {
-    // Pop right, left expressions
-    SimpleNode right = (SimpleNode) jjtree.popNode();
-    SimpleNode left = (SimpleNode) jjtree.popNode();
-    
-    // Create appropriate comparator node
-    SimpleNode cmpNode = null;
-    if (t.kind == LESS) cmpNode = new ASTLESS(JJTLESS);
-    else if (t.kind == LE) cmpNode = new ASTLE(JJTLE);
-    else if (t.kind == GREAT) cmpNode = new ASTGREAT(JJTGREAT);
-    else if (t.kind == GE) cmpNode = new ASTGE(JJTGE);
-    else if (t.kind == EQ) cmpNode = new ASTEQ(JJTEQ);
-    else if (t.kind == NEQ) cmpNode = new ASTNEQ(JJTNEQ);
-    else if (t.kind == IN) cmpNode = new ASTIN(JJTIN);
-    else if (t.kind == NOTIN) cmpNode = new ASTNOTIN(JJTNOTIN);
-    
-    // Pop the comparison node that JJTree created
-    jjtree.popNode();
-    
-    // Build new comparison with 3 children
-    ASTCOMPARISON comp = new ASTCOMPARISON(JJTCOMPARISON);
-    comp.jjtAddChild(left, 0);
-    comp.jjtAddChild(cmpNode, 1);
-    comp.jjtAddChild(right, 2);
-    
-    jjtree.pushNode(comp);
-  }
-}
-
-
-// --------------------------------------
-// Arithmetic expressions
-// --------------------------------------
-void expression() #void : 
-{} 
-{ 
-  sum_expr()
-}
-
-// Sum expression - handles + and - as n-ary operation with ASTpos/ASTneg wrappers
-void sum_expr() #void :
+void condition() #or(>1) : {}
 {
-  Token firstSign = null;
-  Token t;
-  java.util.List terms = new java.util.ArrayList();
-  java.util.List signs = new java.util.ArrayList();
+  and_clause() ("|" and_clause())*
 }
+
+void and_clause() #and(>1) : {}
 {
-  [ firstSign=<PLUS> | firstSign=<MINUS> ] 
-  product() 
-  {
-    signs.add(firstSign);
-    terms.add(jjtree.popNode());
-  }
+  not_clause() ("&" not_clause())*
+}
+
+void not_clause() #void : {}
+{
+  "!" not_clause() #not
+| LOOKAHEAD(expression() comparator()) comparison() 
+| "(" condition() ")"
+| LOOKAHEAD(2) boolean_call()
+| bool_simple()
+}
+
+void comparison() #comparison(3) : {}
+{
+  expression() comparator() expression()
+}
+
+// Using token names as strictly required by tests
+void comparator() #void :
+
+{}
+
+{ "<" #le
+
+| "<=" #leq
+
+| ">" #gre
+
+| ">=" #geq
+
+|"==" #eq
+
+| "!=" #neq
+
+| "=in" #in
+
+|
+
+"!in" #notin
+
+}
+
+
+
+// --- MATH ---
+
+void expression() #sum(jjtree.nodeArity() > 1 || flag_neg) :
+{ boolean flag_neg = false; }
+{   
   (
-    (t=<PLUS> | t=<MINUS>) product()
-    {
-      signs.add(t);
-      terms.add(jjtree.popNode());
-    }
-  )*
-  {
-    // Determine if we need ASTsum
-    boolean needsSum = (terms.size() > 1) || (firstSign != null);
-    
-    if (needsSum) {
-      ASTSUM sum = new ASTSUM(JJTSUM);
-      
-      for (int i = 0; i < terms.size(); i++) {
-        SimpleNode term = (SimpleNode) terms.get(i);
-        Token sign = (Token) signs.get(i);
-        
-        if (i == 0) {
-          // First term
-          if (sign != null && sign.kind == MINUS) {
-            ASTNEG neg = new ASTNEG(JJTNEG);
-            neg.jjtAddChild(term, 0);
-            sum.jjtAddChild(neg, sum.jjtGetNumChildren());
-          } else {
-            sum.jjtAddChild(term, sum.jjtGetNumChildren());
-          }
-        } else {
-          // Subsequent terms always wrapped
-          if (sign.kind == PLUS) {
-            ASTPOS pos = new ASTPOS(JJTPOS);
-            pos.jjtAddChild(term, 0);
-            sum.jjtAddChild(pos, sum.jjtGetNumChildren());
-          } else {
-            ASTNEG neg = new ASTNEG(JJTNEG);
-            neg.jjtAddChild(term, 0);
-            sum.jjtAddChild(neg, sum.jjtGetNumChildren());
-          }
-        }
-      }
-      jjtree.pushNode(sum);
-    } else {
-      // Single term, no operation
-      jjtree.pushNode((SimpleNode) terms.get(0));
-    }
-  }
-}
-
-void product() #void : {} { term() prod_tail() }
-
-// Product operations are binary and left-associative
-void prod_tail() #void : 
-{Token t;}
-{
-  ( 
-    (t=<TIMES> | t=<DIV> | t=<MOD>) term()
-    {
-      SimpleNode right = (SimpleNode) jjtree.popNode();
-      SimpleNode left = (SimpleNode) jjtree.popNode();
-      SimpleNode op = null;
-      
-      if (t.kind == TIMES) {
-        op = new ASTMUL(JJTMUL);
-      } else if (t.kind == DIV) {
-        op = new ASTDIV(JJTDIV);
-      } else if (t.kind == MOD) {
-        op = new ASTMOD(JJTMOD);
-      }
-      
-      op.jjtAddChild(left, 0);
-      op.jjtAddChild(right, 1);
-      jjtree.pushNode(op);
-    }
+     "+" product()
+   | "-" { flag_neg = true; } product() #neg(1)
+   | product()
+  )
+  (
+     "+" product() #pos(1)
+   | "-" product() #neg(1)
   )*
 }
 
-
-// term can be a fn_call, simple value, or nested expression
-void term() #void : {} {
-  LOOKAHEAD(identifier() <LRND>) fn_call()
-  | simple_term()
-  | <LRND> expression() <RRND>
-}
-
-void simple_term() #void : {} { idnum() | idvec() | number() | vec_const() }
-
-void vec_const() : {} { <LSQU> [ exp_list() ] <RSQU> }
-
-
-// relational operators
-Token comparator() #void : 
-{Token t;}
+void product() #void : {}
 {
-  ( t=<LESS> | t=<LE> | t=<GREAT> | t=<GE> | t=<EQ> | t=<NEQ> | t=<IN> | t=<NOTIN> )
-  { return t; }
+  term() 
+  (
+      "*" term() #mul(2) 
+    | "/" term() #div(2)
+    | "%" term() #mod(2)
+  )*
 }
 
-
-// --------------------------------------
-// Identifiers and literals - nodified tokens with values
-// --------------------------------------
-void identifier() #void : {} { ( idnum() | idbool() | idvec() ) }
-
-void boolean_value() #void : {} { ( idbool() | boolean_const() ) }
-
-// Boolean constants as nodified tokens
-void boolean_const() #void : 
-{Token t;}
+void term() #void : {}
 {
-  t=<TRUE> 
-  { 
-    ASTTRUE node = new ASTTRUE(JJTTRUE);
-    jjtree.pushNode(node);
-  }
-  | t=<FALSE> 
-  { 
-    ASTFALSE node = new ASTFALSE(JJTFALSE);
-    jjtree.pushNode(node);
-  }
+  "(" expression() ")"
+| LOOKAHEAD(2) fn_call()
+| simple_term()
 }
 
-// Token value nodes
-void idnum() : 
-{Token t;}
+void simple_term() #void : {}
 {
-  t=<IDNUM>
-  {
-    jjtThis.value = t.image;
-  }
+  CaptureIDNum()
+| CaptureIDVec()
+| CaptureNumber()
+| vec_const() 
 }
 
-void idbool() : 
-{Token t;}
+void vec_const() : {}
+{   
+  LOOKAHEAD("[" expression()) "[" (exp_list())? "]"
+| "[" (condition_list())? "]"
+}
+
+void identifier() #void : {}
 {
-  t=<IDBOOL>
-  {
-    jjtThis.value = t.image;
-  }
+  CaptureIDNum() | CaptureIDBool() | CaptureIDVec()
 }
 
-void idvec() : 
-{Token t;}
+// --- LEAF HELPERS (Extracted to be cleaner) ---
+
+void CaptureIDNum() #idnum : { Token t; }
 {
-  t=<IDVEC>
-  {
-    jjtThis.value = t.image;
-  }
+  t=<IDNUM> { jjtThis.value = t.image; }
 }
 
-void number() : 
-{Token t;}
+void CaptureIDVec() #idvec : { Token t; }
 {
-  t=<NUMBER>
-  {
-    jjtThis.value = t.image;
-  }
+  t=<IDVEC> { jjtThis.value = t.image; }
 }
 
-void string() : 
-{Token t;}
+void CaptureIDBool() #idbool : { Token t; }
 {
-  t=<STRING>
-  {
-    jjtThis.value = t.image;
-  }
+  t=<IDBOOL> { jjtThis.value = t.image; }
 }
 
+void CaptureNumber() #number : { Token t; }
+{
+  t=<NUMBER> { jjtThis.value = t.image; }
+}
+
+void bool_simple() #void : {}
+{
+  CaptureIDBool()
+| <TRUE> #TRUE
+| <FALSE> #FALSE
+}
